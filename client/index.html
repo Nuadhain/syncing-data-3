@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+    <script type="text/babel" >
+        "use strict";
+        let canvas;
+        let ctx;
+
+        let socket;
+        let hash;
+        let users = {};
+        let left = false;
+        let right = false;
+
+        const setup = (data) => {
+            hash = data.hash;
+            users[hash] = data;
+            requestAnimationFrame(drawPlayer);
+        };
+
+        const update = (data) => {
+            if(!users[data.hash]) {
+                users[data.hash] = data;
+                return;
+            }
+            
+            const user = users[data.hash];
+            
+            if(user.lastUpdate >= data.lastUpdate) {
+                return;
+            }
+            
+            user.lastUpdate = data.lastUpdate;
+            
+            user.prevX = data.prevX;
+            user.prevY = data.prevY;
+            user.destX = data.destX;
+            user.destY = data.destY;
+        };
+
+        const lerp = (v0, v1) => {
+            return v0 + v1;
+        };
+
+        const movePlayer = () => {
+            const user = users[hash];
+            user.prevX = user.x;
+            user.prevY = user.y;
+            
+            if(right && user.destX < 750) {
+                user.destX += 2;
+            }
+            else if(left && user.destX > 0) {
+                user.destX -= 2;
+            }
+        };
+
+        const drawPlayer = () => {
+            movePlayer();
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, 750, 500);
+            
+            const keys = Object.keys(users);
+            for(let i = 0; i < keys.length; i++) {
+                const user = users[keys[i]];
+                
+                if(user.hash === hash) {
+                    ctx.fillStyle = 'red';
+                }
+                else {
+                    ctx.fillStyle = 'black';
+                }
+                
+                user.x = lerp(user.prevX, user.destX);
+                user.y = lerp(user.prevy, user.desty);
+                
+                ctx.fillRect(user.x, user.y, 50, 50);
+            }
+        };
+
+        const trackDown = (e) => {
+            if(e.key === 'ArrowRight') {
+                right = true;
+            }
+            else if(e.key === 'ArrowLeft') {
+                left = true;
+            }
+            
+            if(left || right) {
+                e.preventDefault();
+            }
+        };
+        
+        const jump = () => {
+            const user = users[hash];
+            user.prevX = user.x;
+            user.prevY = user.y;
+            
+            user.destY -= 10;
+            socket.emit('movePlayer', user);
+        };
+
+        const trackUp = (e) => {
+            if(e.key === 'ArrowRight') {
+                right = false;
+            }
+            if(e.key === 'ArrowLeft') {
+                left = false;
+            }
+            if(e.key === ' ') {
+                jump();
+            }
+        };
+
+        const sendData = () => {
+            socket.emit('gravity', users[hash]);
+            socket.emit('movePlayer', users[hash]);
+        };
+
+        const init = () => {
+            canvas = document.querySelector("#cav");
+            ctx = canvas.getContext('2d');
+            socket = io.connect();
+            
+            socket.on('connect', function () {
+                requestAnimationFrame(sendData);
+            });
+            socket.on('joined', setup);
+            socket.on('updatedMovement', update);
+            
+            onkeydown = trackDown;
+            onkeyup = trackUp;
+        };
+
+        window.onload = init;
+    </script>
+</head>
+<body>
+    <canvas id="cav" height="500" width="750" style="border: 5px solid black"></canvas>
+</body>
+</html>
